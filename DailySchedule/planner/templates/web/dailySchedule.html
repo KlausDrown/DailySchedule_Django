@@ -1,0 +1,1186 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Планировщик времени с контролем перекрытий</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background-color: #f5f7fa;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 15px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+        }
+        
+        h1 {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+            margin-top: 0;
+        }
+        
+        .description {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-left: 4px solid #3498db;
+            margin-bottom: 25px;
+            border-radius: 0 4px 4px 0;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: background-color 0.2s;
+        }
+        
+        button:hover {
+            background-color: #2980b9;
+        }
+        
+        button.delete-btn {
+            background-color: #e74c3c;
+        }
+        
+        button.delete-btn:hover {
+            background-color: #c0392b;
+        }
+        
+        button.edit-btn {
+            background-color: #f39c12;
+        }
+        
+        button.edit-btn:hover {
+            background-color: #d68910;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+            table-layout: fixed;
+        }
+        
+        th {
+            background-color: #3498db;
+            color: white;
+            text-align: left;
+            padding: 12px 8px;
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+        }
+        
+        td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            vertical-align: top;
+            height: 60px;
+        }
+        
+        .time-header {
+            width: 80px;
+        }
+        
+        .duration-header {
+            width: 140px;
+        }
+        
+        .name-header {
+            width: 200px;
+        }
+        
+        .purpose-header {
+            width: 300px;
+        }
+        
+        .actions-header {
+            width: 100px;
+            text-align: center;
+        }
+        
+        .time-cell {
+            font-weight: 500;
+            color: #2c3e50;
+            background-color: #f8f9fa;
+            text-align: center;
+        }
+        
+        .duration-cell {
+            background-color: #f9f9f9;
+        }
+        
+        .task-block {
+            background-color: #e8f4fc;
+            border-radius: 4px;
+            padding: 8px;
+            border-left: 4px solid #3498db;
+            position: relative;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        
+        .task-block.overlap {
+            background-color: #ffeaea;
+            border-left-color: #e74c3c;
+        }
+        
+        .task-block.conflict {
+            background-color: #ffdddd;
+            border-left-color: #ff6b6b;
+            box-shadow: inset 0 0 0 2px #ff6b6b;
+        }
+        
+        .task-time-info {
+            font-size: 13px;
+            color: #555;
+            margin-top: 2px;
+        }
+        
+        .duration-input-group {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 5px;
+        }
+        
+        .duration-input {
+            flex: 1;
+            padding: 6px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        
+        .duration-unit {
+            width: 70px;
+            padding: 6px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            background-color: #f8f9fa;
+        }
+        
+        input, select, textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        textarea {
+            min-height: 60px;
+            resize: vertical;
+        }
+        
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: #3498db;
+            box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+        }
+        
+        .footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        
+        .stats {
+            font-size: 14px;
+            color: #7f8c8d;
+        }
+        
+        .error-message {
+            color: #e74c3c;
+            font-size: 13px;
+            margin-top: 4px;
+            display: none;
+        }
+        
+        .valid {
+            border-color: #2ecc71 !important;
+        }
+        
+        .invalid {
+            border-color: #e74c3c !important;
+        }
+        
+        .time-indicator {
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background-color: #3498db;
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .modal-content {
+            background-color: white;
+            padding: 25px;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 500px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        
+        .modal-title {
+            margin-top: 0;
+            color: #2c3e50;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+        
+        .form-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        
+        .occupied {
+            background-color: #f0f0f0;
+            color: #999;
+            font-style: italic;
+            text-align: center;
+        }
+        
+        .time-preview-table {
+            width: 100%;
+            margin-top: 10px;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        
+        .time-preview-table th,
+        .time-preview-table td {
+            border: 1px solid #ddd;
+            padding: 4px;
+            text-align: center;
+        }
+        
+        .time-preview-table th {
+            background-color: #f8f9fa;
+        }
+        
+        .time-preview-cell {
+            height: 20px;
+        }
+        
+        .time-preview-cell.occupied {
+            background-color: #3498db;
+            color: white;
+        }
+        
+        .time-preview-cell.conflict {
+            background-color: #e74c3c;
+            color: white;
+        }
+        .date-header {
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .day-name {
+            font-size: 24px;
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 5px;
+        }
+
+        .day-date {
+            font-size: 16px;
+            color: #7f8c8d;
+            font-weight: normal;
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                padding: 15px;
+            }
+            
+            table {
+                font-size: 14px;
+            }
+            
+            th, td {
+                padding: 6px 4px;
+            }
+            
+            input, select, textarea {
+                padding: 6px;
+                font-size: 13px;
+            }
+            
+            .controls {
+                flex-direction: column;
+            }
+            
+            button {
+                width: 100%;
+            }
+            
+            .duration-input-group {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Планировщик времени с контролем перекрытий</h1>
+        <div class="date-header">
+        <div class="day-name" id="dayName">Понедельник</div>
+        <div class="day-date" id="dayDate">26.7.25</div>
+        </div>
+        <div class="description">
+            <p><strong>Как работает:</strong> Столбец "Time" показывает часы и служит ориентиром. При добавлении задачи система автоматически проверяет, не перекрывается ли она с существующими задачами. Задачи, которые перекрываются, выделяются красным цветом.</p>
+            <p><strong>Особенности:</strong> Название задачи отображается в столбце "name", а описание - в "purpose". Задачи можно добавлять только в свободное время.</p>
+        </div>
+        
+        <div class="controls">
+            <button id="addTask">+ Добавить задачу</button>
+            <button id="addExample">Добавить примеры из файла</button>
+            <button class="delete-btn" id="clearAll">Очистить все задачи</button>
+            <button id="autoFill">Автозаполнить день</button>
+        </div>
+        
+        <table id="timeTable">
+            <thead>
+                <tr>
+                    <th class="time-header">Time</th>
+                    <th class="duration-header">Curent Time</th>
+                    <th class="name-header">name</th>
+                    <th class="purpose-header">purpose</th>
+                    <th class="actions-header">Действия</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody">
+                <!-- Строки будут добавляться здесь -->
+            </tbody>
+        </table>
+        
+        <div class="footer">
+            <div class="stats">
+                Всего задач: <span id="taskCount">0</span> | 
+                Всего запланировано: <span id="totalTime">0</span> часов | 
+                Свободного времени: <span id="freeTime">24</span> часов
+            </div>
+            <button id="saveTable">Сохранить расписание</button>
+        </div>
+    </div>
+    
+    <!-- Модальное окно для добавления/редактирования задачи -->
+    <div id="taskModal" class="modal">
+        <div class="modal-content">
+            <h3 class="modal-title" id="modalTitle">Добавить задачу</h3>
+            <form id="taskForm">
+                <div class="form-group">
+                    <label for="taskStartTime">Время начала:</label>
+                    <select id="taskStartTime" required>
+                        <option value="">Выберите время</option>
+                        <!-- Времена будут добавлены через JavaScript -->
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="taskDuration">Продолжительность (мин):</label>
+                    <div class="duration-input-group">
+                        <input type="number" id="taskDurationValue" min="20" step="10" value="30" required>
+                        <span>минут</span>
+                    </div>
+                    <div id="durationError" class="error-message">Минимальная продолжительность - 20 минут</div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="taskName">Название задачи:</label>
+                    <input type="text" id="taskName" placeholder="Например: Работа, Отдых, Учеба" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="taskPurpose">Цель/подробности:</label>
+                    <textarea id="taskPurpose" placeholder="Опишите, что нужно сделать"></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <div id="timePreview">
+                        <!-- Предпросмотр временного интервала -->
+                    </div>
+                </div>
+                
+                <div class="form-actions">
+                    <button type="button" id="cancelTask">Отмена</button>
+                    <button type="submit" id="saveTask">Сохранить задачу</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const tableBody = document.getElementById('tableBody');
+            const addTaskBtn = document.getElementById('addTask');
+            const addExampleBtn = document.getElementById('addExample');
+            const clearAllBtn = document.getElementById('clearAll');
+            const autoFillBtn = document.getElementById('autoFill');
+            const saveTableBtn = document.getElementById('saveTable');
+            const taskModal = document.getElementById('taskModal');
+            const cancelTaskBtn = document.getElementById('cancelTask');
+            const saveTaskBtn = document.getElementById('saveTask');
+            const taskForm = document.getElementById('taskForm');
+            const modalTitle = document.getElementById('modalTitle');
+            
+            // Элементы статистики
+            const taskCountElement = document.getElementById('taskCount');
+            const totalTimeElement = document.getElementById('totalTime');
+            const freeTimeElement = document.getElementById('freeTime');
+            
+            // Поля формы
+            const taskStartTime = document.getElementById('taskStartTime');
+            const taskDurationValue = document.getElementById('taskDurationValue');
+            const taskName = document.getElementById('taskName');
+            const taskPurpose = document.getElementById('taskPurpose');
+            const timePreview = document.getElementById('timePreview');
+            const durationError = document.getElementById('durationError');
+            
+            // Переменные приложения
+            let tasks = [];
+            let editingTaskId = null;
+            let timeSlots = [];
+            
+            // Инициализация временных слотов (24 часа, разбитых на 30-минутные интервалы)
+            function initTimeSlots() {
+                timeSlots = [];
+                for (let i = 0; i < 24; i++) {
+                    for (let j = 0; j < 2; j++) {
+                        const hour = i;
+                        const minute = j === 0 ? '00' : '30';
+                        timeSlots.push({
+                            time: `${hour}:${minute}`,
+                            hour: hour,
+                            minute: minute,
+                            occupied: false,
+                            taskId: null,
+                            isStart: false
+                        });
+                    }
+                }
+                
+                // Заполняем выпадающий список времен
+                taskStartTime.innerHTML = '<option value="">Выберите время</option>';
+                timeSlots.forEach(slot => {
+                    taskStartTime.innerHTML += `<option value="${slot.time}">${slot.time}</option>`;
+                });
+            }
+            
+            // Инициализация таблицы
+            function initTable() {
+                // Очищаем таблицу
+                tableBody.innerHTML = '';
+                
+                // Создаем 24 строки (часы)
+                for (let i = 0; i < 24; i++) {
+                    const row = document.createElement('tr');
+                    row.id = `time-row-${i}`;
+                    
+                    // Столбец Time (фиксированный, только для отображения)
+                    const timeCell = document.createElement('td');
+                    timeCell.className = 'time-cell';
+                    timeCell.textContent = `${i}:00`;
+                    row.appendChild(timeCell);
+                    
+                    // Столбец Curent Time
+                    const durationCell = document.createElement('td');
+                    durationCell.className = 'duration-cell';
+                    durationCell.id = `duration-cell-${i}`;
+                    row.appendChild(durationCell);
+                    
+                    // Столбец name
+                    const nameCell = document.createElement('td');
+                    nameCell.id = `name-cell-${i}`;
+                    row.appendChild(nameCell);
+                    
+                    // Столбец purpose
+                    const purposeCell = document.createElement('td');
+                    purposeCell.id = `purpose-cell-${i}`;
+                    row.appendChild(purposeCell);
+                    
+                    // Столбец actions
+                    const actionsCell = document.createElement('td');
+                    actionsCell.id = `actions-cell-${i}`;
+                    row.appendChild(actionsCell);
+                    
+                    tableBody.appendChild(row);
+                }
+            }
+            
+            // Добавление задачи с проверкой перекрытий
+            function addTask(startTime, durationMinutes, name, purpose, id = null) {
+                // Проверяем, что продолжительность не менее 20 минут
+                if (durationMinutes < 20) {
+                    alert('Минимальная продолжительность задачи - 20 минут');
+                    return null;
+                }
+                
+                const taskId = id || Date.now().toString();
+                const [startHour, startMinute] = startTime.split(':').map(Number);
+                
+                // Вычисляем конечное время
+                const startTotalMinutes = startHour * 60 + startMinute;
+                const endTotalMinutes = startTotalMinutes + durationMinutes;
+                const endHour = Math.floor(endTotalMinutes / 60);
+                const endMinute = endTotalMinutes % 60;
+                
+                // Проверяем, выходит ли задача за пределы суток
+                if (endHour >= 24) {
+                    alert('Задача выходит за пределы суток (24:00)');
+                    return null;
+                }
+                
+                // Проверяем перекрытие с существующими задачами
+                const conflict = checkTaskOverlap(startTotalMinutes, endTotalMinutes, taskId);
+                if (conflict) {
+                    alert('Задача перекрывается с существующей задачей. Выберите другое время.');
+                    return null;
+                }
+                
+                // Создаем объект задачи
+                const task = {
+                    id: taskId,
+                    startTime: startTime,
+                    startHour: startHour,
+                    startMinute: startMinute,
+                    startTotalMinutes: startTotalMinutes,
+                    durationMinutes: durationMinutes,
+                    endHour: endHour,
+                    endMinute: endMinute,
+                    endTotalMinutes: endTotalMinutes,
+                    name: name,
+                    purpose: purpose,
+                    conflict: false
+                };
+                
+                if (!id) {
+                    tasks.push(task);
+                } else {
+                    // Обновляем существующую задачу
+                    const index = tasks.findIndex(t => t.id === id);
+                    if (index !== -1) {
+                        tasks[index] = task;
+                    }
+                }
+                
+                // Обновляем временные слоты
+                updateTimeSlots();
+                
+                // Обновляем отображение
+                renderTasks();
+                updateStats();
+                
+                return taskId;
+            }
+            
+            // Проверка перекрытия задач
+            function checkTaskOverlap(startMinutes, endMinutes, excludeTaskId = null) {
+                for (const task of tasks) {
+                    if (task.id === excludeTaskId) continue;
+                    
+                    // Проверяем пересечение интервалов
+                    const taskStart = task.startTotalMinutes;
+                    const taskEnd = task.endTotalMinutes;
+                    
+                    // Если интервалы пересекаются (исключая точное совпадение концов)
+                    if ((startMinutes < taskEnd) && (endMinutes > taskStart)) {
+                        return true;
+                    }
+                }
+                
+                return false;
+            }
+            
+            // Обновление временных слотов
+            function updateTimeSlots() {
+                // Сбрасываем все слоты
+                timeSlots.forEach(slot => {
+                    slot.occupied = false;
+                    slot.taskId = null;
+                    slot.isStart = false;
+                });
+                
+                // Помечаем занятые слоты
+                tasks.forEach(task => {
+                    const startSlotIndex = timeSlots.findIndex(slot => 
+                        slot.hour === task.startHour && slot.minute === (task.startMinute < 30 ? '00' : '30'));
+                    
+                    // Вычисляем количество слотов, которые занимает задача
+                    const totalSlots = Math.ceil(task.durationMinutes / 30);
+                    
+                    // Помечаем слоты как занятые
+                    for (let i = 0; i < totalSlots; i++) {
+                        const slotIndex = startSlotIndex + i;
+                        if (slotIndex < timeSlots.length) {
+                            timeSlots[slotIndex].occupied = true;
+                            timeSlots[slotIndex].taskId = task.id;
+                            if (i === 0) {
+                                timeSlots[slotIndex].isStart = true;
+                            }
+                        }
+                    }
+                });
+            }
+            
+            // Отрисовка задач в таблице
+            function renderTasks() {
+                // Сначала очищаем все ячейки
+                for (let i = 0; i < 24; i++) {
+                    document.getElementById(`duration-cell-${i}`).innerHTML = '';
+                    document.getElementById(`name-cell-${i}`).textContent = '';
+                    document.getElementById(`purpose-cell-${i}`).textContent = '';
+                    document.getElementById(`actions-cell-${i}`).innerHTML = '';
+                    
+                    // Добавляем индикатор свободного времени
+                    const durationCell = document.getElementById(`duration-cell-${i}`);
+                    if (!hasTaskInHour(i)) {
+                        durationCell.innerHTML = '<div class="occupied">Свободно</div>';
+                    }
+                }
+                
+                // Отрисовываем задачи
+                tasks.forEach(task => {
+                    const startHour = task.startHour;
+                    const endHour = task.endHour;
+                    
+                    // Определяем, сколько строк занимает задача
+                    const hourSpan = (endHour - startHour) + (task.endMinute > 0 ? 1 : 0);
+                    
+                    // Получаем ячейки для отображения
+                    const durationCell = document.getElementById(`duration-cell-${startHour}`);
+                    const nameCell = document.getElementById(`name-cell-${startHour}`);
+                    const purposeCell = document.getElementById(`purpose-cell-${startHour}`);
+                    const actionsCell = document.getElementById(`actions-cell-${startHour}`);
+                    
+                    // Проверяем, есть ли конфликты
+                    const hasConflict = checkTaskOverlap(task.startTotalMinutes, task.endTotalMinutes, task.id);
+                    
+                    // Создаем блок задачи в столбце Curent Time
+                    const taskBlock = document.createElement('div');
+                    taskBlock.className = `task-block ${hasConflict ? 'conflict' : ''}`;
+                    taskBlock.id = `task-${task.id}`;
+                    
+                    // Добавляем индикатор времени
+                    const timeIndicator = document.createElement('div');
+                    timeIndicator.className = 'time-indicator';
+                    taskBlock.appendChild(timeIndicator);
+                    
+                    // Форматируем время окончания
+                    const endTime = `${task.endHour}:${task.endMinute < 10 ? '0' + task.endMinute : task.endMinute}`;
+                    
+                    // Добавляем информацию о времени в блок
+                    const timeInfo = document.createElement('div');
+                    timeInfo.className = 'task-time-info';
+                    timeInfo.textContent = `${task.startTime} - ${endTime} (${formatDuration(task.durationMinutes)})`;
+                    taskBlock.appendChild(timeInfo);
+                    
+                    // Добавляем блок в ячейку продолжительности
+                    durationCell.innerHTML = '';
+                    durationCell.appendChild(taskBlock);
+                    
+                    // Добавляем название задачи в столбец name
+                    nameCell.textContent = task.name;
+                    
+                    // Добавляем описание задачи в столбец purpose
+                    purposeCell.textContent = task.purpose || '';
+                    
+                    // Добавляем кнопки действий
+                    const editButton = document.createElement('button');
+                    editButton.className = 'edit-btn';
+                    editButton.textContent = 'Изменить';
+                    editButton.style.marginRight = '5px';
+                    editButton.style.marginBottom = '5px';
+                    editButton.onclick = () => editTask(task.id);
+                    
+                    const deleteButton = document.createElement('button');
+                    deleteButton.className = 'delete-btn';
+                    deleteButton.textContent = 'Удалить';
+                    deleteButton.onclick = () => deleteTask(task.id);
+                    
+                    actionsCell.appendChild(editButton);
+                    actionsCell.appendChild(deleteButton);
+                    
+                    // Если задача занимает несколько часов, объединяем ячейки
+                    if (hourSpan > 1) {
+                        // Для столбца Curent Time
+                        for (let h = startHour + 1; h < startHour + hourSpan; h++) {
+                            const nextDurationCell = document.getElementById(`duration-cell-${h}`);
+                            if (nextDurationCell) {
+                                nextDurationCell.innerHTML = '<div class="occupied">↳ продолжение</div>';
+                            }
+                        }
+                        
+                        // Для столбца Name
+                        for (let h = startHour + 1; h < startHour + hourSpan; h++) {
+                            const nextNameCell = document.getElementById(`name-cell-${h}`);
+                            if (nextNameCell) {
+                                nextNameCell.textContent = '';
+                            }
+                        }
+                        
+                        // Для столбца Purpose
+                        for (let h = startHour + 1; h < startHour + hourSpan; h++) {
+                            const nextPurposeCell = document.getElementById(`purpose-cell-${h}`);
+                            if (nextPurposeCell) {
+                                nextPurposeCell.textContent = '';
+                            }
+                        }
+                    }
+                });
+                
+                // Отмечаем конфликтующие задачи
+                markConflictingTasks();
+            }
+            
+            // Проверка, есть ли задача в указанном часе
+            function hasTaskInHour(hour) {
+                return tasks.some(task => {
+                    const taskStartHour = task.startHour;
+                    const taskEndHour = task.endHour + (task.endMinute > 0 ? 1 : 0);
+                    return hour >= taskStartHour && hour < taskEndHour;
+                });
+            }
+            
+            // Отметка конфликтующих задач
+            function markConflictingTasks() {
+                // Сбрасываем конфликты
+                tasks.forEach(task => {
+                    task.conflict = false;
+                });
+                
+                // Проверяем каждую задачу на конфликты
+                for (let i = 0; i < tasks.length; i++) {
+                    for (let j = i + 1; j < tasks.length; j++) {
+                        const task1 = tasks[i];
+                        const task2 = tasks[j];
+                        
+                        // Проверяем пересечение интервалов
+                        if ((task1.startTotalMinutes < task2.endTotalMinutes) && 
+                            (task1.endTotalMinutes > task2.startTotalMinutes)) {
+                            task1.conflict = true;
+                            task2.conflict = true;
+                        }
+                    }
+                }
+                
+                // Обновляем отображение конфликтов
+                tasks.forEach(task => {
+                    const taskBlock = document.getElementById(`task-${task.id}`);
+                    if (taskBlock) {
+                        if (task.conflict) {
+                            taskBlock.classList.add('conflict');
+                        } else {
+                            taskBlock.classList.remove('conflict');
+                        }
+                    }
+                });
+            }
+            
+            // Форматирование продолжительности
+            function formatDuration(minutes) {
+                const hours = Math.floor(minutes / 60);
+                const mins = minutes % 60;
+                
+                if (hours === 0) {
+                    return `${mins} мин`;
+                } else if (mins === 0) {
+                    return `${hours} час`;
+                } else {
+                    return `${hours} ч ${mins} мин`;
+                }
+            }
+            
+            // Обновление статистики
+            function updateStats() {
+                taskCountElement.textContent = tasks.length;
+                
+                // Считаем общее время в часах
+                let totalMinutes = 0;
+                tasks.forEach(task => {
+                    totalMinutes += task.durationMinutes;
+                });
+                
+                const totalHours = (totalMinutes / 60).toFixed(1);
+                totalTimeElement.textContent = totalHours;
+                
+                // Считаем свободное время
+                const freeHours = (24 - (totalMinutes / 60)).toFixed(1);
+                freeTimeElement.textContent = freeHours;
+            }
+            
+            // Добавление примеров из файла
+            function addExamples() {
+                // Задача 1: 2:00, 2 часа, "Малая задача", "Подготовить доклад"
+                addTask("2:00", 120, "Малая задача", "Подготовить доклад");
+                
+                // Задача 2: 4:00, 1 час, "отдых", "-"
+                addTask("4:00", 60, "отдых", "-");
+                
+                // Задача 3: 8:00, 5 часов, "Школа", "-"
+                addTask("8:00", 300, "Школа", "-");
+                
+                // Задача 4: 13:00, 30 минут, "перерыв", ""
+                addTask("13:00", 30, "перерыв", "");
+                
+                // Задача 5: 13:30, 30 минут, "еда", ""
+                addTask("13:30", 30, "еда", "");
+            }
+            
+            // Автозаполнение дня примерами
+            function autoFillDay() {
+                clearAllTasks();
+                
+                // Добавляем стандартный рабочий день
+                addTask("8:00", 60, "Утренняя рутина", "Зарядка, завтрак");
+                addTask("9:00", 240, "Работа", "Основные рабочие задачи");
+                addTask("13:00", 60, "Обед", "Перерыв на обед");
+                addTask("14:00", 180, "Работа", "Вторая половина рабочего дня");
+                addTask("17:00", 60, "Спорт", "Тренировка");
+                addTask("19:00", 120, "Ужин и отдых", "Семейное время");
+                addTask("21:00", 60, "Чтение", "Личное развитие");
+            }
+            
+            // Удаление задачи
+            function deleteTask(taskId) {
+                if (confirm('Вы уверены, что хотите удалить эту задачу?')) {
+                    tasks = tasks.filter(task => task.id !== taskId);
+                    updateTimeSlots();
+                    renderTasks();
+                    updateStats();
+                }
+            }
+            
+            // Редактирование задачи
+            function editTask(taskId) {
+                const task = tasks.find(t => t.id === taskId);
+                if (task) {
+                    editingTaskId = taskId;
+                    modalTitle.textContent = 'Редактировать задачу';
+                    
+                    // Заполняем форму
+                    taskStartTime.value = task.startTime;
+                    taskDurationValue.value = task.durationMinutes;
+                    taskName.value = task.name;
+                    taskPurpose.value = task.purpose;
+                    
+                    // Обновляем предпросмотр
+                    updateTimePreview();
+                    
+                    // Показываем модальное окно
+                    taskModal.style.display = 'flex';
+                }
+            }
+            
+            // Обновление предпросмотра временного интервала
+            function updateTimePreview() {
+                const startTime = taskStartTime.value;
+                const durationValue = parseInt(taskDurationValue.value) || 0;
+                
+                if (!startTime || durationValue < 1) {
+                    timePreview.innerHTML = '<div style="color: #777;">Выберите время начала и продолжительность</div>';
+                    return;
+                }
+                
+                // Проверяем минимальную продолжительность
+                if (durationValue < 20) {
+                    durationError.style.display = 'block';
+                    taskDurationValue.classList.add('invalid');
+                } else {
+                    durationError.style.display = 'none';
+                    taskDurationValue.classList.remove('invalid');
+                }
+                
+                // Вычисляем конечное время
+                const [startHour, startMinute] = startTime.split(':').map(Number);
+                const startTotalMinutes = startHour * 60 + startMinute;
+                const endTotalMinutes = startTotalMinutes + durationValue;
+                const endHour = Math.floor(endTotalMinutes / 60);
+                const endMinute = endTotalMinutes % 60;
+                
+                // Форматируем конечное время
+                const endTime = `${endHour}:${endMinute < 10 ? '0' + endMinute : endMinute}`;
+                
+                // Проверяем перекрытие с другими задачами
+                const conflict = editingTaskId ? 
+                    checkTaskOverlap(startTotalMinutes, endTotalMinutes, editingTaskId) : 
+                    checkTaskOverlap(startTotalMinutes, endTotalMinutes);
+                
+                // Создаем предпросмотр временной шкалы
+                let previewHtml = `<div><strong>Временной интервал:</strong> ${startTime} - ${endTime}</div>`;
+                previewHtml += `<div><strong>Продолжительность:</strong> ${formatDuration(durationValue)}</div>`;
+                
+                if (conflict) {
+                    previewHtml += `<div style="color: #e74c3c; margin-top: 8px;"><strong>Внимание:</strong> Этот интервал пересекается с существующей задачей</div>`;
+                } else {
+                    previewHtml += `<div style="color: #2ecc71; margin-top: 8px;"><strong>Доступно:</strong> Этот интервал свободен</div>`;
+                }
+                
+                // Добавляем простую временную шкалу
+                previewHtml += '<table class="time-preview-table">';
+                previewHtml += '<tr><th>Время</th><th>00</th><th>30</th></tr>';
+                
+                for (let hour = 0; hour < 24; hour++) {
+                    previewHtml += '<tr>';
+                    previewHtml += `<td>${hour}:00</td>`;
+                    
+                    // Проверяем каждый 30-минутный интервал
+                    for (let minute = 0; minute < 2; minute++) {
+                        const slotTime = hour * 60 + minute * 30;
+                        const slotEndTime = slotTime + 30;
+                        
+                        // Проверяем, пересекается ли слот с новой задачей
+                        const isOccupiedByNewTask = (slotTime < endTotalMinutes && slotEndTime > startTotalMinutes);
+                        
+                        // Проверяем, занят ли слот другими задачами
+                        let isOccupiedByOther = false;
+                        if (editingTaskId) {
+                            isOccupiedByOther = tasks.some(task => 
+                                task.id !== editingTaskId && 
+                                slotTime < task.endTotalMinutes && 
+                                slotEndTime > task.startTotalMinutes);
+                        } else {
+                            isOccupiedByOther = tasks.some(task => 
+                                slotTime < task.endTotalMinutes && 
+                                slotEndTime > task.startTotalMinutes);
+                        }
+                        
+                        let cellClass = 'time-preview-cell';
+                        if (isOccupiedByNewTask) {
+                            cellClass += ' occupied';
+                        }
+                        if (isOccupiedByOther) {
+                            cellClass += ' conflict';
+                        }
+                        
+                        previewHtml += `<td class="${cellClass}"></td>`;
+                    }
+                    
+                    previewHtml += '</tr>';
+                }
+                
+                previewHtml += '</table>';
+                timePreview.innerHTML = previewHtml;
+            }
+            
+            // Очистка всех задач
+            function clearAllTasks() {
+                if (confirm('Вы уверены, что хотите удалить все задачи?')) {
+                    tasks = [];
+                    updateTimeSlots();
+                    renderTasks();
+                    updateStats();
+                }
+            }
+            
+            // Сохранение расписания
+            function saveSchedule() {
+                const scheduleData = {
+                    tasks: tasks,
+                    savedAt: new Date().toISOString()
+                };
+                
+                localStorage.setItem('timeScheduleData', JSON.stringify(scheduleData));
+                alert('Расписание сохранено! Данные будут восстановлены при следующем посещении страницы.');
+            }
+            
+            // Загрузка расписания
+            function loadSchedule() {
+                const savedData = localStorage.getItem('timeScheduleData');
+                if (savedData) {
+                    try {
+                        const data = JSON.parse(savedData);
+                        tasks = data.tasks || [];
+                        
+                        // Обновляем отображение
+                        updateTimeSlots();
+                        renderTasks();
+                        updateStats();
+                        return true;
+                    } catch (e) {
+                        console.error('Ошибка загрузки данных:', e);
+                    }
+                }
+                return false;
+            }
+            
+            // Инициализация
+            initTimeSlots();
+            initTable();
+            
+            // Загружаем сохраненные данные
+            if (!loadSchedule()) {
+                // Автозаполняем примерами для демонстрации
+                setTimeout(() => {
+                    if (tasks.length === 0) {
+                        autoFillDay();
+                    }
+                }, 500);
+            }
+            
+            // Обработчики событий
+            addTaskBtn.addEventListener('click', function() {
+                editingTaskId = null;
+                modalTitle.textContent = 'Добавить задачу';
+                
+                // Сбрасываем форму
+                taskForm.reset();
+                taskDurationValue.value = 30;
+                timePreview.innerHTML = '<div style="color: #777;">Выберите время начала и продолжительность</div>';
+                
+                // Показываем модальное окно
+                taskModal.style.display = 'flex';
+            });
+            
+            addExampleBtn.addEventListener('click', addExamples);
+            
+            clearAllBtn.addEventListener('click', clearAllTasks);
+            
+            autoFillBtn.addEventListener('click', autoFillDay);
+            
+            saveTableBtn.addEventListener('click', saveSchedule);
+            
+            cancelTaskBtn.addEventListener('click', function() {
+                taskModal.style.display = 'none';
+            });
+            
+            // Обработчик отправки формы
+            taskForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                // Получаем значения из формы
+                const startTime = taskStartTime.value;
+                const durationValue = parseInt(taskDurationValue.value) || 0;
+                const name = taskName.value;
+                const purpose = taskPurpose.value;
+                
+                // Проверяем минимальную продолжительность
+                if (durationValue < 20) {
+                    alert('Минимальная продолжительность задачи - 20 минут');
+                    return;
+                }
+                
+                // Добавляем или обновляем задачу
+                if (editingTaskId) {
+                    addTask(startTime, durationValue, name, purpose, editingTaskId);
+                } else {
+                    addTask(startTime, durationValue, name, purpose);
+                }
+                
+                // Закрываем модальное окно
+                taskModal.style.display = 'none';
+            });
+            
+            // Обновляем предпросмотр при изменении значений
+            taskStartTime.addEventListener('change', updateTimePreview);
+            taskDurationValue.addEventListener('input', updateTimePreview);
+            
+            // Закрытие модального окна при клике вне его
+            window.addEventListener('click', function(e) {
+                if (e.target === taskModal) {
+                    taskModal.style.display = 'none';
+                }
+            });
+                    // Функция для получения дня недели и даты из URL
+function parseDateFromURL() {
+    // Получаем параметр date из URL (формат: день-мес-год)
+    const urlParams = new URLSearchParams(window.location.search);
+    const dateParam = urlParams.get('date');
+    
+    let day, month, year;
+    
+    if (dateParam) {
+        // Парсим дату из параметра URL (формат: день-мес-год)
+        const parts = dateParam.split('-');
+        if (parts.length === 3) {
+            day = parseInt(parts[0]);
+            month = parseInt(parts[1]) - 1; // месяцы в JS: 0-11
+            year = 2000 + parseInt(parts[2]); // предполагаем 21 век
+        }
+    }
+    
+    // Если дата не указана в URL, используем текущую дату
+    const date = dateParam ? new Date(year, month, day) : new Date();
+    
+    // Массив названий дней недели
+    const daysOfWeek = ['Воскресенье', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
+    
+    // Получаем название дня недели
+    const dayName = daysOfWeek[date.getDay()];
+    
+    // Форматируем дату в формат день.мес.год (без ведущих нулей)
+    const formattedDate = `${date.getDate()}.${date.getMonth() + 1}.${date.getFullYear().toString().slice(-2)}`;
+    
+    // Обновляем элементы на странице
+    document.getElementById('dayName').textContent = dayName;
+    document.getElementById('dayDate').textContent = formattedDate;
+    
+    return date;
+}
+
+// Вызываем функцию при загрузке страницы
+parseDateFromURL();
+        });
+
+    </script>
+</body>
+</html>
