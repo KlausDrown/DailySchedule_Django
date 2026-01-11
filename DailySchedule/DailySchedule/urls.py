@@ -20,5 +20,7 @@ import planner
 
 urlpatterns = [
     path('admin/', admin.site.urls),    
-    path('', include('planner.urls'))
+    path('', include('planner.urls')),
+    path('accounts/', include('userAuth.urls'))
+    
 ]
