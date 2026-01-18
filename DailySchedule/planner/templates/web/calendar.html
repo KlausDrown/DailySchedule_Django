@@ -1,8 +1,10 @@
 <!DOCTYPE html>
+{% load static %}
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="{% static "favicon.ico" %}" />
     <title>Календарь планировщика</title>
     <style>
         * {
@@ -235,7 +237,6 @@
         
         <div class="instructions">
             <p><strong>Как использовать:</strong> Кликните на любой день месяца, чтобы открыть планировщик на выбранную дату. Текущий день выделен синим кружком.</p>
-            <p><strong>Сохранение данных:</strong> Все задачи сохраняются в браузере и привязаны к конкретным датам.</p>
         </div>
         
         <div class="current-date">
@@ -383,7 +384,7 @@
                         
                         // Перенаправляем на страницу планировщика с выбранной датой
                         const urlDate = formatDateForURL(selectedDate);
-                        window.location.href = `${urlDate}.html`;
+                        window.location.href = `/day?date=${urlDate}`;
                     });
                     
                     calendar.appendChild(dayElement);

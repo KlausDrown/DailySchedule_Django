@@ -1,10 +1,13 @@
 <!DOCTYPE html>
+{% load static %} 
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="{% static "favicon.ico" %}" />
     <title>Планировщик времени с контролем перекрытий</title>
     <style>
+        /* Стили остаются без изменений */
         * {
             box-sizing: border-box;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -347,6 +350,27 @@
             font-weight: normal;
         }
         
+        .api-status {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 4px;
+            display: none;
+        }
+        
+        .api-status.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+            display: block;
+        }
+        
+        .api-status.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            display: block;
+        }
+        
         @media (max-width: 768px) {
             .container {
                 padding: 15px;
@@ -386,6 +410,9 @@
         <div class="day-name" id="dayName">Понедельник</div>
         <div class="day-date" id="dayDate">26.7.25</div>
         </div>
+        
+        <div id="apiStatus" class="api-status"></div>
+        
         <div class="description">
             <p><strong>Как работает:</strong> Столбец "Time" показывает часы и служит ориентиром. При добавлении задачи система автоматически проверяет, не перекрывается ли она с существующими задачами. Задачи, которые перекрываются, выделяются красным цветом.</p>
             <p><strong>Особенности:</strong> Название задачи отображается в столбце "name", а описание - в "purpose". Задачи можно добавлять только в свободное время.</p>
@@ -471,6 +498,15 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
+            // Конфигурация API
+            const API_BASE_URL = 'http://localhost:8000/api';
+            const API_ENDPOINTS = {
+                SCHEDULE: '/schedule/',
+                TASK_TEMPLATES: '/task-templates/',
+                TIME_SLOTS: '/time-slots/'
+            };
+            
+            // DOM элементы
             const tableBody = document.getElementById('tableBody');
             const addTaskBtn = document.getElementById('addTask');
             const addExampleBtn = document.getElementById('addExample');
@@ -482,6 +518,7 @@
             const saveTaskBtn = document.getElementById('saveTask');
             const taskForm = document.getElementById('taskForm');
             const modalTitle = document.getElementById('modalTitle');
+            const apiStatus = document.getElementById('apiStatus');
             
             // Элементы статистики
             const taskCountElement = document.getElementById('taskCount');
@@ -500,6 +537,24 @@
             let tasks = [];
             let editingTaskId = null;
             let timeSlots = [];
+            let currentScheduleId = null;
+            let currentDate = null;
+
+            function getCSRFToken() {
+                // Найти куку по имени (например, 'csrftoken' для Django)
+                const name = 'csrftoken';
+                const cookies = document.cookie.split(';');
+                
+                for (let cookie of cookies) {
+                    const [key, value] = cookie.trim().split('=');
+                    if (key === name) {
+                    return decodeURIComponent(value);
+                    }
+                }
+                return null; // Если токен не найден
+                }
+
+            const csrfToken = getCSRFToken();
             
             // Инициализация временных слотов (24 часа, разбитых на 30-минутные интервалы)
             function initTimeSlots() {
@@ -567,11 +622,56 @@
                 }
             }
             
+            // Функция для получения дня недели и даты из URL
+            function parseDateFromURL() {
+                const urlParams = new URLSearchParams(window.location.search);
+                const dateParam = urlParams.get('date');
+                
+                let day, month, year;
+                
+                if (dateParam) {
+                    // Парсим дату из параметра URL (формат: день-мес-год)
+                    const parts = dateParam.split('-');
+                    if (parts.length === 3) {
+                        day = parseInt(parts[0]);
+                        month = parseInt(parts[1]) - 1;
+                        year = 2000 + parseInt(parts[2]);
+                    }
+                }
+                
+                // Если дата не указана в URL, используем текущую дату
+                const date = dateParam ? new Date(year, month, day) : new Date();
+                currentDate = date;
+                
+                // Массив названий дней недели
+                const daysOfWeek = ['Воскресенье', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
+                
+                // Получаем название дня недели
+                const dayName = daysOfWeek[date.getDay()];
+                
+                // Форматируем дату в формат день.мес.год (без ведущих нулей)
+                const formattedDate = `${date.getDate()}.${date.getMonth() + 1}.${date.getFullYear().toString().slice(-2)}`;
+                
+                // Обновляем элементы на странице
+                document.getElementById('dayName').textContent = dayName;
+                document.getElementById('dayDate').textContent = formattedDate;
+                
+                return date;
+            }
+            
+            // Форматирование даты в формат YYYY-MM-DD
+            function formatDateForAPI(date) {
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            }
+            
             // Добавление задачи с проверкой перекрытий
             function addTask(startTime, durationMinutes, name, purpose, id = null) {
                 // Проверяем, что продолжительность не менее 20 минут
                 if (durationMinutes < 20) {
-                    alert('Минимальная продолжительность задачи - 20 минут');
+                    showApiError('Минимальная продолжительность задачи - 20 минут');
                     return null;
                 }
                 
@@ -586,14 +686,14 @@
                 
                 // Проверяем, выходит ли задача за пределы суток
                 if (endHour >= 24) {
-                    alert('Задача выходит за пределы суток (24:00)');
+                    showApiError('Задача выходит за пределы суток (24:00)');
                     return null;
                 }
                 
                 // Проверяем перекрытие с существующими задачами
                 const conflict = checkTaskOverlap(startTotalMinutes, endTotalMinutes, taskId);
                 if (conflict) {
-                    alert('Задача перекрывается с существующей задачей. Выберите другое время.');
+                    showApiError('Задача перекрывается с существующей задачей. Выберите другое время.');
                     return null;
                 }
                 
@@ -884,20 +984,60 @@
                 
                 // Задача 5: 13:30, 30 минут, "еда", ""
                 addTask("13:30", 30, "еда", "");
+                
+                // Сохраняем в API
+                saveScheduleToBackend();
             }
             
-            // Автозаполнение дня примерами
-            function autoFillDay() {
-                clearAllTasks();
-                
-                // Добавляем стандартный рабочий день
-                addTask("8:00", 60, "Утренняя рутина", "Зарядка, завтрак");
-                addTask("9:00", 240, "Работа", "Основные рабочие задачи");
-                addTask("13:00", 60, "Обед", "Перерыв на обед");
-                addTask("14:00", 180, "Работа", "Вторая половина рабочего дня");
-                addTask("17:00", 60, "Спорт", "Тренировка");
-                addTask("19:00", 120, "Ужин и отдых", "Семейное время");
-                addTask("21:00", 60, "Чтение", "Личное развитие");
+            // Автозаполнение дня примерами через API
+            async function autoFillDay() {
+                try {
+                    // Сначала получаем шаблоны из API
+                    const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.TASK_TEMPLATES}`, {
+                        method: 'GET',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        }
+                    });
+                    
+                    if (response.ok) {
+                        const templates = await response.json();
+                        
+                        // Очищаем текущие задачи
+                        tasks = [];
+                        
+                        // Добавляем задачи из шаблонов
+                        templates.forEach(template => {
+                            // Преобразуем время из строки в формат "HH:MM"
+                            const time = new Date(`2000-01-01T${template.start_time}`);
+                            const timeString = `${time.getHours()}:${time.getMinutes().toString().padStart(2, '0')}`;
+                            
+                            addTask(timeString, template.duration_minutes, template.name, template.purpose || '');
+                        });
+                        
+                        // Сохраняем в API
+                        await saveScheduleToBackend();
+                        showApiSuccess('День автозаполнен с использованием шаблонов');
+                    } else {
+                        // Если нет шаблонов, используем локальные примеры
+                        clearAllTasks();
+                        
+                        // Добавляем стандартный рабочий день
+                        addTask("8:00", 60, "Утренняя рутина", "Зарядка, завтрак");
+                        addTask("9:00", 240, "Работа", "Основные рабочие задачи");
+                        addTask("13:00", 60, "Обед", "Перерыв на обед");
+                        addTask("14:00", 180, "Работа", "Вторая половина рабочего дня");
+                        addTask("17:00", 60, "Спорт", "Тренировка");
+                        addTask("19:00", 120, "Ужин и отдых", "Семейное время");
+                        addTask("21:00", 60, "Чтение", "Личное развитие");
+                        
+                        // Сохраняем в API
+                        await saveScheduleToBackend();
+                        showApiSuccess('День автозаполнен стандартными задачами');
+                    }
+                } catch (error) {
+                    showApiError('Ошибка при автозаполнении дня: ' + error.message);
+                }
             }
             
             // Удаление задачи
@@ -907,6 +1047,9 @@
                     updateTimeSlots();
                     renderTasks();
                     updateStats();
+                    
+                    // Сохраняем изменения в API
+                    saveScheduleToBackend();
                 }
             }
             
@@ -1029,53 +1172,188 @@
                     updateTimeSlots();
                     renderTasks();
                     updateStats();
+                    
+                    // Сохраняем пустое расписание в API
+                    saveScheduleToBackend();
                 }
             }
             
-            // Сохранение расписания
-            function saveSchedule() {
-                const scheduleData = {
-                    tasks: tasks,
-                    savedAt: new Date().toISOString()
-                };
+            // Показать сообщение об успехе API
+            function showApiSuccess(message) {
+                apiStatus.textContent = message;
+                apiStatus.className = 'api-status success';
                 
-                localStorage.setItem('timeScheduleData', JSON.stringify(scheduleData));
-                alert('Расписание сохранено! Данные будут восстановлены при следующем посещении страницы.');
+                // Скрыть сообщение через 3 секунды
+                setTimeout(() => {
+                    apiStatus.className = 'api-status';
+                }, 3000);
             }
             
-            // Загрузка расписания
-            function loadSchedule() {
-                const savedData = localStorage.getItem('timeScheduleData');
-                if (savedData) {
-                    try {
-                        const data = JSON.parse(savedData);
-                        tasks = data.tasks || [];
+            // Показать сообщение об ошибке API
+            function showApiError(message) {
+                apiStatus.textContent = message;
+                apiStatus.className = 'api-status error';
+                
+                // Скрыть сообщение через 5 секунд
+                setTimeout(() => {
+                    apiStatus.className = 'api-status';
+                }, 5000);
+            }
+            
+            // Сохранение расписания в API
+            async function saveScheduleToBackend() {
+                try {
+                    // Преобразуем задачи в формат для API
+                    const scheduleData = tasks.map(task => ({
+                        start_time: `${task.startHour.toString().padStart(2, '0')}:${task.startMinute.toString().padStart(2, '0')}:00`,
+                        duration_minutes: task.durationMinutes,
+                        name: task.name,
+                        purpose: task.purpose || ''
+                    }));
+                    
+                    // Подготавливаем данные для отправки
+                    const schedulePayload = {
+                        date: formatDateForAPI(currentDate),
+                        total_tasks: tasks.length,
+                        total_minutes: tasks.reduce((sum, task) => sum + task.durationMinutes, 0),
+                        schedule_data: scheduleData,
+                        priority: 0
+                    };
+                    
+                    let response;csrfToken
+                    
+                    if (0) {
+                        // Обновляем существующее расписание
+                        response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.SCHEDULE}${currentScheduleId}/`, {
+                            method: 'PUT',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRFToken': csrfToken,
+                            },
+                            body: JSON.stringify(schedulePayload)
+                        });
+                    } else {
+                        // Создаем новое расписание
+
                         
-                        // Обновляем отображение
-                        updateTimeSlots();
-                        renderTasks();
-                        updateStats();
-                        return true;
-                    } catch (e) {
-                        console.error('Ошибка загрузки данных:', e);
+                        response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.SCHEDULE}`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRFToken': csrfToken,
+                            },
+                            body: JSON.stringify(schedulePayload)
+                        });
                     }
+                    
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.message || `Ошибка сервера: ${response.status}`);
+                    }
+                    
+                    const data = await response.json();
+                    currentScheduleId = data.id;
+                    
+                    showApiSuccess('Расписание успешно сохранено!');
+                    return true;
+                    
+                } catch (error) {
+                    showApiError('Ошибка сохранения: ' + error.message);
+                    return false;
                 }
-                return false;
+            }
+            
+            // Загрузка расписания из API
+            async function loadScheduleFromBackend() {
+                try {
+                    const formattedDate = formatDateForAPI(currentDate);
+                    
+                    // Запрашиваем расписание на текущую дату
+                    const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.SCHEDULE}?date=${formattedDate}`, {
+                        method: 'GET',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': csrfToken,
+                        }
+                    });
+                    console.log(response)
+                    if (response.ok) {
+                        const data = await response.json();
+                        
+                        if (data.results && data.results.length > 0) {
+                            const schedule = data.results[0];
+                            currentScheduleId = schedule.id;
+                            
+                            // Преобразуем данные из API в формат фронтенда
+                            tasks = (schedule.schedule_data || []).map((taskData, index) => {
+                                const time = new Date(`2000-01-01T${taskData.start_time}`);
+                                const startHour = time.getHours();
+                                const startMinute = time.getMinutes();
+                                const durationMinutes = taskData.duration_minutes;
+                                const startTotalMinutes = startHour * 60 + startMinute;
+                                const endTotalMinutes = startTotalMinutes + durationMinutes;
+                                
+                                return {
+                                    id: `task-${index}-${Date.now()}`,
+                                    startTime: `${startHour}:${startMinute.toString().padStart(2, '0')}`,
+                                    startHour: startHour,
+                                    startMinute: startMinute,
+                                    startTotalMinutes: startTotalMinutes,
+                                    durationMinutes: durationMinutes,
+                                    endHour: Math.floor(endTotalMinutes / 60),
+                                    endMinute: endTotalMinutes % 60,
+                                    endTotalMinutes: endTotalMinutes,
+                                    name: taskData.name,
+                                    purpose: taskData.purpose || '',
+                                    conflict: false
+                                };
+                            });
+                            
+                            // Обновляем отображение
+                            updateTimeSlots();
+                            renderTasks();
+                            updateStats();
+                            
+                            showApiSuccess('Расписание загружено');
+                            return true;
+                        }
+                    }
+                    
+                    // Если расписание не найдено, создаем пустое
+                    tasks = [];
+                    currentScheduleId = null;
+                    updateTimeSlots();
+                    renderTasks();
+                    updateStats();
+                    
+                    return false;
+                    
+                } catch (error) {
+                    showApiError('Ошибка загрузки расписания: ' + error.message);
+                    
+                    // В случае ошибки используем пустое расписание
+                    tasks = [];
+                    currentScheduleId = null;
+                    updateTimeSlots();
+                    renderTasks();
+                    updateStats();
+                    
+                    return false;
+                }
+            }
+            
+            // Сохранение расписания (публичная функция)
+            async function saveSchedule() {
+                return await saveScheduleToBackend();
             }
             
             // Инициализация
             initTimeSlots();
             initTable();
+            parseDateFromURL();
             
-            // Загружаем сохраненные данные
-            if (!loadSchedule()) {
-                // Автозаполняем примерами для демонстрации
-                setTimeout(() => {
-                    if (tasks.length === 0) {
-                        autoFillDay();
-                    }
-                }, 500);
-            }
+            // Загружаем расписание из API
+            loadScheduleFromBackend();
             
             // Обработчики событий
             addTaskBtn.addEventListener('click', function() {
@@ -1104,7 +1382,7 @@
             });
             
             // Обработчик отправки формы
-            taskForm.addEventListener('submit', function(e) {
+            taskForm.addEventListener('submit', async function(e) {
                 e.preventDefault();
                 
                 // Получаем значения из формы
@@ -1126,6 +1404,9 @@
                     addTask(startTime, durationValue, name, purpose);
                 }
                 
+                // Сохраняем в API
+                await saveScheduleToBackend();
+                
                 // Закрываем модальное окно
                 taskModal.style.display = 'none';
             });
@@ -1140,47 +1421,7 @@
                     taskModal.style.display = 'none';
                 }
             });
-                    // Функция для получения дня недели и даты из URL
-function parseDateFromURL() {
-    // Получаем параметр date из URL (формат: день-мес-год)
-    const urlParams = new URLSearchParams(window.location.search);
-    const dateParam = urlParams.get('date');
-    
-    let day, month, year;
-    
-    if (dateParam) {
-        // Парсим дату из параметра URL (формат: день-мес-год)
-        const parts = dateParam.split('-');
-        if (parts.length === 3) {
-            day = parseInt(parts[0]);
-            month = parseInt(parts[1]) - 1; // месяцы в JS: 0-11
-            year = 2000 + parseInt(parts[2]); // предполагаем 21 век
-        }
-    }
-    
-    // Если дата не указана в URL, используем текущую дату
-    const date = dateParam ? new Date(year, month, day) : new Date();
-    
-    // Массив названий дней недели
-    const daysOfWeek = ['Воскресенье', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
-    
-    // Получаем название дня недели
-    const dayName = daysOfWeek[date.getDay()];
-    
-    // Форматируем дату в формат день.мес.год (без ведущих нулей)
-    const formattedDate = `${date.getDate()}.${date.getMonth() + 1}.${date.getFullYear().toString().slice(-2)}`;
-    
-    // Обновляем элементы на странице
-    document.getElementById('dayName').textContent = dayName;
-    document.getElementById('dayDate').textContent = formattedDate;
-    
-    return date;
-}
-
-// Вызываем функцию при загрузке страницы
-parseDateFromURL();
         });
-
     </script>
 </body>
 </html>
