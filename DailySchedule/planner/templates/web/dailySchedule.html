@@ -420,9 +420,7 @@
         
         <div class="controls">
             <button id="addTask">+ Добавить задачу</button>
-            <button id="addExample">Добавить примеры из файла</button>
             <button class="delete-btn" id="clearAll">Очистить все задачи</button>
-            <button id="autoFill">Автозаполнить день</button>
         </div>
         
         <table id="timeTable">
@@ -509,9 +507,7 @@
             // DOM элементы
             const tableBody = document.getElementById('tableBody');
             const addTaskBtn = document.getElementById('addTask');
-            const addExampleBtn = document.getElementById('addExample');
             const clearAllBtn = document.getElementById('clearAll');
-            const autoFillBtn = document.getElementById('autoFill');
             const saveTableBtn = document.getElementById('saveTable');
             const taskModal = document.getElementById('taskModal');
             const cancelTaskBtn = document.getElementById('cancelTask');
@@ -967,80 +963,7 @@
                 const freeHours = (24 - (totalMinutes / 60)).toFixed(1);
                 freeTimeElement.textContent = freeHours;
             }
-            
-            // Добавление примеров из файла
-            function addExamples() {
-                // Задача 1: 2:00, 2 часа, "Малая задача", "Подготовить доклад"
-                addTask("2:00", 120, "Малая задача", "Подготовить доклад");
-                
-                // Задача 2: 4:00, 1 час, "отдых", "-"
-                addTask("4:00", 60, "отдых", "-");
-                
-                // Задача 3: 8:00, 5 часов, "Школа", "-"
-                addTask("8:00", 300, "Школа", "-");
-                
-                // Задача 4: 13:00, 30 минут, "перерыв", ""
-                addTask("13:00", 30, "перерыв", "");
-                
-                // Задача 5: 13:30, 30 минут, "еда", ""
-                addTask("13:30", 30, "еда", "");
-                
-                // Сохраняем в API
-                saveScheduleToBackend();
-            }
-            
-            // Автозаполнение дня примерами через API
-            async function autoFillDay() {
-                try {
-                    // Сначала получаем шаблоны из API
-                    const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.TASK_TEMPLATES}`, {
-                        method: 'GET',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        }
-                    });
-                    
-                    if (response.ok) {
-                        const templates = await response.json();
-                        
-                        // Очищаем текущие задачи
-                        tasks = [];
-                        
-                        // Добавляем задачи из шаблонов
-                        templates.forEach(template => {
-                            // Преобразуем время из строки в формат "HH:MM"
-                            const time = new Date(`2000-01-01T${template.start_time}`);
-                            const timeString = `${time.getHours()}:${time.getMinutes().toString().padStart(2, '0')}`;
-                            
-                            addTask(timeString, template.duration_minutes, template.name, template.purpose || '');
-                        });
-                        
-                        // Сохраняем в API
-                        await saveScheduleToBackend();
-                        showApiSuccess('День автозаполнен с использованием шаблонов');
-                    } else {
-                        // Если нет шаблонов, используем локальные примеры
-                        clearAllTasks();
-                        
-                        // Добавляем стандартный рабочий день
-                        addTask("8:00", 60, "Утренняя рутина", "Зарядка, завтрак");
-                        addTask("9:00", 240, "Работа", "Основные рабочие задачи");
-                        addTask("13:00", 60, "Обед", "Перерыв на обед");
-                        addTask("14:00", 180, "Работа", "Вторая половина рабочего дня");
-                        addTask("17:00", 60, "Спорт", "Тренировка");
-                        addTask("19:00", 120, "Ужин и отдых", "Семейное время");
-                        addTask("21:00", 60, "Чтение", "Личное развитие");
-                        
-                        // Сохраняем в API
-                        await saveScheduleToBackend();
-                        showApiSuccess('День автозаполнен стандартными задачами');
-                    }
-                } catch (error) {
-                    showApiError('Ошибка при автозаполнении дня: ' + error.message);
-                }
-            }
-            
-            // Удаление задачи
+           
             function deleteTask(taskId) {
                 if (confirm('Вы уверены, что хотите удалить эту задачу?')) {
                     tasks = tasks.filter(task => task.id !== taskId);
@@ -1049,7 +972,6 @@
                     updateStats();
                     
                     // Сохраняем изменения в API
-                    saveScheduleToBackend();
                 }
             }
             
@@ -1174,7 +1096,6 @@
                     updateStats();
                     
                     // Сохраняем пустое расписание в API
-                    saveScheduleToBackend();
                 }
             }
             
@@ -1369,11 +1290,10 @@
                 taskModal.style.display = 'flex';
             });
             
-            addExampleBtn.addEventListener('click', addExamples);
             
             clearAllBtn.addEventListener('click', clearAllTasks);
             
-            autoFillBtn.addEventListener('click', autoFillDay);
+
             
             saveTableBtn.addEventListener('click', saveSchedule);
             
@@ -1405,7 +1325,7 @@
                 }
                 
                 // Сохраняем в API
-                await saveScheduleToBackend();
+                // await saveScheduleToBackend();
                 
                 // Закрываем модальное окно
                 taskModal.style.display = 'none';
